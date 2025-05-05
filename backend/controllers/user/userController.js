@@ -1,10 +1,8 @@
 import asyncHandler from "express-async-handler";
 import User from "../../models/user/userModel.js";
+import { sendVerificationEmail } from "../../utilis/sendMails.js";
 
-import {
-  hashPassword,
-  generateVerificationToken,
-} from "../../utilis/helpers.js";
+import { hashPassword } from "../../utilis/helpers.js";
 
 import generateToken from "../../utilis/generateToken.js";
 
@@ -20,16 +18,24 @@ const registerUser = asyncHandler(async (req, res) => {
     if (userExist) {
       throw new Error("Email already taken");
     }
+    const verificationToken = Math.floor(
+      100000 + Math.random() * 900000
+    ).toString();
+
     const user = await User.create({
       email,
       name,
       password: await hashPassword(password),
-      verificationToken: generateVerificationToken(),
+      verificationToken,
       //   expire set 24 hours
       verificationTokenExpiresAt: Date.now() + 24 * 60 * 60 * 1000,
     });
     if (user) {
+      // jwt
       generateToken(res, user._id);
+
+      await sendVerificationEmail(user.email, verificationToken);
+
       res.status(201).json({
         status: "success",
         message: "user register sucessfully",
