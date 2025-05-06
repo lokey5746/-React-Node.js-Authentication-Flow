@@ -4,9 +4,12 @@ import {
   sendVerificationEmail,
   sendWelcomeEmail,
 } from "../../utilis/sendMails.js";
-import { hashPassword } from "../../utilis/helpers.js";
+import { hashPassword, verifyPassword } from "../../utilis/helpers.js";
 import generateToken from "../../utilis/generateToken.js";
 
+// @desc  Register User
+// @route POST /api/v1/users
+// @access Public
 const registerUser = asyncHandler(async (req, res) => {
   try {
     const { name, email, password } = req.body;
@@ -54,6 +57,9 @@ const registerUser = asyncHandler(async (req, res) => {
   }
 });
 
+// @desc  Verify User
+// @route POST /api/users/verify
+// @access Public
 const verifyEmail = async (req, res) => {
   const { code } = req.body;
   try {
@@ -90,9 +96,45 @@ const verifyEmail = async (req, res) => {
   }
 };
 
+// @desc  Login User
+// @route POST /api/users/login
+// @access Public
+
+const login = async (req, res) => {
+  const { email, password } = req.body;
+  try {
+    // check email exist
+    const user = await User.findOne({ email });
+    if (!user) {
+      throw new Error("email not exist");
+    }
+    // verify password
+    const isMatched = await verifyPassword(password, user.password);
+    if (!isMatched) {
+      throw new Error("invalid login ceredentials");
+    }
+    generateToken(res, user._id);
+    user.lastLogin = new Date();
+    await user.save();
+
+    res.status(201).json({
+      success: true,
+      message: "Logged in successfully",
+      user: {
+        ...user._doc,
+        password: undefined,
+      },
+    });
+  } catch (error) {
+    throw new Error(error);
+  }
+};
+// @desc  Logout User
+// @route POST /api/users/logout
+// @access Public
 const logout = async (req, res) => {
   res.clearCookie("token");
   res.status(200).json({ success: true, message: "Logged out successfully" });
 };
 
-export { registerUser, verifyEmail, logout };
+export { registerUser, verifyEmail, logout, login };
