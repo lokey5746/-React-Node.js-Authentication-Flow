@@ -1,9 +1,10 @@
 import asyncHandler from "express-async-handler";
 import User from "../../models/user/userModel.js";
-import { sendVerificationEmail } from "../../utilis/sendMails.js";
-
+import {
+  sendVerificationEmail,
+  sendWelcomeEmail,
+} from "../../utilis/sendMails.js";
 import { hashPassword } from "../../utilis/helpers.js";
-
 import generateToken from "../../utilis/generateToken.js";
 
 const registerUser = asyncHandler(async (req, res) => {
@@ -53,4 +54,45 @@ const registerUser = asyncHandler(async (req, res) => {
   }
 });
 
-export { registerUser };
+const verifyEmail = async (req, res) => {
+  const { code } = req.body;
+  try {
+    const user = await User.findOne({
+      verificationToken: code,
+      verificationTokenExpiresAt: { $gt: Date.now() },
+    });
+
+    if (!user) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid or expired verification code",
+      });
+    }
+
+    user.isVerified = true;
+    user.verificationToken = undefined;
+    user.verificationTokenExpiresAt = undefined;
+    await user.save();
+
+    await sendWelcomeEmail(user.email, user.name);
+
+    res.status(200).json({
+      success: true,
+      message: "Email verified successfully",
+      user: {
+        ...user._doc,
+        password: undefined,
+      },
+    });
+  } catch (error) {
+    console.log("error in verifyEmail ", error);
+    res.status(500).json({ success: false, message: "Server error" });
+  }
+};
+
+const logout = async (req, res) => {
+  res.clearCookie("token");
+  res.status(200).json({ success: true, message: "Logged out successfully" });
+};
+
+export { registerUser, verifyEmail, logout };
