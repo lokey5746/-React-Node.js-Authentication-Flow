@@ -1,8 +1,11 @@
 import asyncHandler from "express-async-handler";
+import crypto from "crypto";
+
 import User from "../../models/user/userModel.js";
 import {
   sendVerificationEmail,
   sendWelcomeEmail,
+  sendPasswordResetEmail,
 } from "../../utilis/sendMails.js";
 import { hashPassword, verifyPassword } from "../../utilis/helpers.js";
 import generateToken from "../../utilis/generateToken.js";
@@ -137,4 +140,37 @@ const logout = async (req, res) => {
   res.status(200).json({ success: true, message: "Logged out successfully" });
 };
 
-export { registerUser, verifyEmail, logout, login };
+const forgotPassword = async (req, res) => {
+  const { email } = req.body;
+  try {
+    const user = await User.findOne({ email });
+    if (!user) {
+      return res.status(400).json({ sucess: false, message: "User not found" });
+    }
+
+    // Generate token
+    const resetToken = crypto.randomBytes(20).toString("hex");
+    const resetTokenExpireAt = Date.now() + 1 * 60 * 60 * 1000; // 1 hours
+
+    user.resetPasswordToken = resetToken;
+    user.resetPasswordExpiresAt = resetTokenExpireAt;
+
+    await user.save();
+
+    // send mail
+    await sendPasswordResetEmail(
+      user.email,
+      `${process.env.CLIENT_URL}/reset-password/${resetToken}`
+    );
+
+    res.status(200).json({
+      success: true,
+      message: "Password reset link send to your email",
+    });
+  } catch (error) {
+    console.log("Error in forgotPassword", error);
+    res.status(400).json({ success: false, message: error.message });
+  }
+};
+
+export { registerUser, verifyEmail, logout, login, forgotPassword };
