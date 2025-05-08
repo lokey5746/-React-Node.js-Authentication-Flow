@@ -1,11 +1,13 @@
 import asyncHandler from "express-async-handler";
 import crypto from "crypto";
+import bcrypt from "bcryptjs";
 
 import User from "../../models/user/userModel.js";
 import {
   sendVerificationEmail,
   sendWelcomeEmail,
   sendPasswordResetEmail,
+  sendResetSuccessEmail,
 } from "../../utilis/sendMails.js";
 import { hashPassword, verifyPassword } from "../../utilis/helpers.js";
 import generateToken from "../../utilis/generateToken.js";
@@ -148,16 +150,16 @@ const forgotPassword = async (req, res) => {
       return res.status(400).json({ sucess: false, message: "User not found" });
     }
 
-    // Generate token
+    // Generate reset token
     const resetToken = crypto.randomBytes(20).toString("hex");
-    const resetTokenExpireAt = Date.now() + 1 * 60 * 60 * 1000; // 1 hours
+    const resetTokenExpiresAt = Date.now() + 1 * 60 * 60 * 1000; // 1 hour
 
     user.resetPasswordToken = resetToken;
-    user.resetPasswordExpiresAt = resetTokenExpireAt;
+    user.resetPasswordExpiresAt = resetTokenExpiresAt;
 
     await user.save();
 
-    // send mail
+    // send email
     await sendPasswordResetEmail(
       user.email,
       `${process.env.CLIENT_URL}/reset-password/${resetToken}`
@@ -165,7 +167,7 @@ const forgotPassword = async (req, res) => {
 
     res.status(200).json({
       success: true,
-      message: "Password reset link send to your email",
+      message: "Password reset link sent to your email",
     });
   } catch (error) {
     console.log("Error in forgotPassword", error);
@@ -173,4 +175,44 @@ const forgotPassword = async (req, res) => {
   }
 };
 
-export { registerUser, verifyEmail, logout, login, forgotPassword };
+const resetPassword = async (req, res) => {
+  try {
+    const { token } = req.params;
+    const { password } = req.body;
+
+    const user = await User.findOne({
+      resetPasswordToken: token,
+      resetPasswordExpiresAt: { $gt: Date.now() },
+    });
+    if (!user) {
+      return res
+        .status(400)
+        .json({ success: false, message: "Invalid or expired reset token" });
+    }
+
+    // update password
+    const hashedPassword = await bcrypt.hash(password, 10);
+    user.password = hashedPassword;
+    user.resetPasswordToken = undefined;
+    user.resetPasswordExpiresAt = undefined;
+    await user.save();
+
+    await sendResetSuccessEmail(user.email);
+
+    res
+      .status(200)
+      .json({ success: true, message: "Password reset successful" });
+  } catch (error) {
+    console.log("Error in resetPassword", error);
+    res.status(400).json({ success: false, message: error.message });
+  }
+};
+
+export {
+  registerUser,
+  verifyEmail,
+  logout,
+  login,
+  forgotPassword,
+  resetPassword,
+};
